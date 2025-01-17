@@ -1,0 +1,336 @@
+---
+title: "Spam_Email_Classification"
+output: html_document
+date: "2025-01-16"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Installing Required Packages
+
+```{r, message=FALSE}
+library(dplyr)
+library(tm)
+library(SnowballC)
+library(caTools)
+library(rpart)
+library(rpart.plot)
+library(randomForest)
+library(caret)
+library(e1071)
+library(ROCR)
+```
+
+### Downloading the Data
+
+```{r}
+emails = read.csv("/Users/andresperez/Desktop/Personal/PROJECTS/R_Projects/Spam_Email_Classification/emails.csv",stringsAsFactors=FALSE)
+
+```
+
+# Part 1: Exploratory Data Analysis & Exploration
+
+### Number of Emails by Spam/Non-Spam
+
+```{r}
+# Group emails by spam status and count
+spam_counts = emails %>% group_by(spam) %>% summarize(n=n())
+
+print(spam_counts)
+
+
+```
+
+There are a total of 5730 emails in this dataset. However, the data must be cleaned so that the `spam` column only contains 0's and 1's and not anything else. This includes removing NA's and non-numeric rows.
+
+```{r}
+# Filter the data to include only rows where spam is "0" or "1"
+emails <- emails %>% filter(spam %in% c("0", "1"))
+
+# Verify the cleaned data
+spam_counts_cleaned <- emails %>% group_by(spam) %>% summarize(n = n())
+
+print(spam_counts_cleaned)
+
+```
+
+Now, there is a total of 5726 emails in our dataset that are labeled as either spam(1) or no spam(0).
+
+### First Email Content
+
+```{r}
+# Let's revise the content of the first email
+cat("Content of the first email:\n", emails$text[1])
+```
+
+### Maximum Number of Characters
+
+```{r}
+# Calculate the character count for each email
+emails$char.count <- nchar(emails$text)
+
+# Find the maximum character count
+max_char_count <- max(emails$char.count)
+
+# Display the maximum character count
+cat("Maximum number of characters in an email:", max_char_count, "\n")
+
+
+```
+
+### Row of Email with Most Characters
+
+```{r}
+# Find the row with the maximum character count
+max_char_row <- which.max(emails$char.count)
+
+# Display the row number and corresponding character count
+cat("Row of the email with the most characters:", max_char_row, "\n")
+cat("Character count in this email:", emails$char.count[max_char_row], "\n")
+
+# Display a summary of character counts
+cat("Summary of character counts:\n")
+print(summary(emails$char.count))
+
+```
+
+### Minimum Number of Characters
+
+```{r}
+# Find the minimum character count
+min_char_count <- min(emails$char.count)
+
+# Display the minimum character count
+cat("Minimum number of characters in an email:", min_char_count, "\n")
+
+```
+
+### Row of Email with Least Characters
+
+```{r}
+# Find the row with the minimum character count
+min_char_row <- which.min(emails$char.count)
+
+# Display the row number and corresponding character count
+cat("Row of the email with the least characters:", min_char_row, "\n")
+cat("Character count in this email:", emails$char.count[min_char_row], "\n")
+
+```
+
+### 
+
+## Document - Term Matrix (DTM)
+
+### Preprocess Text Data
+
+```{r}
+# Create a text corpus and preprocess the data
+corpus <- VCorpus(VectorSource(emails$text))
+corpus <- tm_map(corpus, content_transformer(tolower)) # Convert to lowercase
+corpus <- tm_map(corpus, removePunctuation)           # Remove punctuation
+corpus <- tm_map(corpus, removeWords, stopwords("english")) # Remove stopwords
+corpus <- tm_map(corpus, stemDocument)                # Perform stemming
+cat("Text preprocessing completed.\n")
+
+```
+
+### Create DTM
+
+```{r}
+# Create the document-term matrix (DTM)
+dtm <- DocumentTermMatrix(corpus)
+
+# Display the structure of the DTM
+cat("Document-Term Matrix (DTM):\n")
+print(dtm)
+
+
+```
+
+### Number of Stepwords
+
+```{r}
+# Display the number of stopwords used
+cat("Number of stopwords in English:", length(stopwords("english")), "\n")
+```
+
+## Sparse DTM
+
+### Reduce Sparse Terms
+
+```{r}
+# Create a sparse DTM by removing terms with low frequency
+spdtm <- removeSparseTerms(dtm, 0.995)
+
+# Display the structure of the sparse DTM
+cat("Sparse Document-Term Matrix (spDTM):\n")
+print(spdtm)
+
+```
+
+## Word Frequency Analysis
+
+### Most Frequent Word Stem
+
+```{r}
+# Convert the sparse DTM to a data frame
+emailsSparse <- as.data.frame(as.matrix(spdtm))
+colnames(emailsSparse) <- make.names(colnames(emailsSparse))
+
+# Find the most frequent word stem
+stem_freq_max <- names(which.max(colSums(emailsSparse)))
+
+# Display the most frequent word stem
+cat("Most frequent word stem:", stem_freq_max, "\n")
+
+```
+
+### Word Stem in Non-Spam Emails ( $\geq$ 5000 Occurrences)
+
+```{r}
+# Add the spam column to emailsSparse
+emailsSparse$spam <- as.numeric(emails$spam)
+emailsSparse <- emailsSparse[!is.na(emailsSparse$spam), ]
+
+# Count word stems appearing at least 5000 times in non-spam emails
+nonspam_word_count <- sum(
+  colSums(emailsSparse[emailsSparse$spam == 0, sapply(emailsSparse, is.numeric)]) >= 5000
+)
+
+# Display the count
+cat("Number of word stems appearing at least 5000 times in non-spam emails:", nonspam_word_count, "\n")
+
+```
+
+### Word Stems in Spam Emails ( $\geq$ 1000 Occurrences)
+
+```{r}
+# Count word stems appearing at least 1000 times in spam emails
+spam_word_count <- sum(
+  colSums(emailsSparse[emailsSparse$spam == 1, sapply(emailsSparse, is.numeric)]) >= 1000
+)
+
+# Display the count
+cat("Number of word stems appearing at least 1000 times in spam emails:", spam_word_count, "\n")
+
+```
+
+## 
+
+# Part 2: Model Building & Evaluation
+
+## Split the Data into Training and Testing Sets
+
+```{r}
+# Create a 70/30 split using caret
+set.seed(123)
+train_index <- createDataPartition(emailsSparse$spam, p = 0.7, list = FALSE)
+train_data <- emailsSparse[train_index, ]
+test_data <- emailsSparse[-train_index, ]
+
+# Check split sizes
+cat("Training Set Size:", nrow(train_data), "\n")
+cat("Testing Set Size:", nrow(test_data), "\n")
+
+```
+
+## Logistic Regression
+
+### Train the Model
+
+```{r}
+# Train Logistic Regression
+
+```
+
+### Evaluate on the Training Set
+
+```{r}
+# Predict probabilities on the training set
+log_pred_train <- predict(spam_log, type = "response")
+
+# Calculate accuracy with a threshold of 0.5
+log_train_accuracy <- mean((log_pred_train >= 0.5) == train_data$spam)
+
+# Print accuracy
+cat("Logistic Regression Training Accuracy:", log_train_accuracy, "\n")
+
+```
+
+### Evaluate on the Test Set
+
+```{r}
+# Predict probabilities on the test set
+log_pred_test <- predict(spam_log, newdata = test_data, type = "response")
+
+# Calculate accuracy with a threshold of 0.5
+log_test_accuracy <- mean((log_pred_test >= 0.5) == test_data$spam)
+
+# Print accuracy
+cat("Logistic Regression Test Accuracy:", log_test_accuracy, "\n")
+
+```
+
+## CART (Decision Tree)
+
+### Train the Model
+
+```{r}
+
+```
+
+### Evaluate on the Train Set
+
+```{r}
+
+```
+
+### Evaluate on the Test Set
+
+```{r}
+
+```
+
+## Random Forest
+
+### Train the Model
+
+```{r}
+
+```
+
+### Evaluate on the Train Set
+
+```{r}
+
+```
+
+### Evaluate on the Test Set
+
+```{r}
+
+```
+
+## Calculate AUC for Each Model
+
+### Logistic Regression
+
+```{r}
+
+```
+
+### CART
+
+```{r}
+
+```
+
+### Random Forest
+
+```{r}
+
+```
+
+## Compare Model Performance
