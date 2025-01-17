@@ -242,6 +242,7 @@ cat("Testing Set Size:", nrow(test_data), "\n")
 
 ```{r}
 # Train Logistic Regression
+spamLog = glm(spam~.,data=train_data, family=binomial)
 
 ```
 
@@ -249,7 +250,7 @@ cat("Testing Set Size:", nrow(test_data), "\n")
 
 ```{r}
 # Predict probabilities on the training set
-log_pred_train <- predict(spam_log, type = "response")
+log_pred_train <- predict(spamLog, type = "response")
 
 # Calculate accuracy with a threshold of 0.5
 log_train_accuracy <- mean((log_pred_train >= 0.5) == train_data$spam)
@@ -263,7 +264,7 @@ cat("Logistic Regression Training Accuracy:", log_train_accuracy, "\n")
 
 ```{r}
 # Predict probabilities on the test set
-log_pred_test <- predict(spam_log, newdata = test_data, type = "response")
+log_pred_test <- predict(spamLog, newdata = test_data, type = "response")
 
 # Calculate accuracy with a threshold of 0.5
 log_test_accuracy <- mean((log_pred_test >= 0.5) == test_data$spam)
@@ -278,18 +279,36 @@ cat("Logistic Regression Test Accuracy:", log_test_accuracy, "\n")
 ### Train the Model
 
 ```{r}
+spam_cart <- rpart(spam ~ ., data = train_data, method = "class")
+
+```
+
+### Visualizing the Decision Tree
+
+```{r}
+rpart.plot(spam_cart)
 
 ```
 
 ### Evaluate on the Train Set
 
 ```{r}
+# Predict probabilities
+cart_pred_train <- predict(spam_cart, type = "prob")[, 2]
+# Calculate accuracy
+cart_train_accuracy <- mean((cart_pred_train >= 0.5) == train_data$spam)
+cat("CART Training Accuracy:", cart_train_accuracy, "\n")
 
 ```
 
 ### Evaluate on the Test Set
 
 ```{r}
+# Predict probabilities
+cart_pred_test <- predict(spam_cart, newdata = test_data, type = "prob")[, 2]
+# Calculate accuracy
+cart_test_accuracy <- mean((cart_pred_test >= 0.5) == test_data$spam)
+cat("CART Test Accuracy:", cart_test_accuracy, "\n")
 
 ```
 
@@ -298,18 +317,48 @@ cat("Logistic Regression Test Accuracy:", log_test_accuracy, "\n")
 ### Train the Model
 
 ```{r}
+train_data$spam <- as.factor(train_data$spam)
+test_data$spam <- as.factor(test_data$spam)
+
+set.seed(123)
+spam_rf <- randomForest(spam ~ ., data = train_data)
+```
+
+### Evaluate on the Train & Test Set
+
+```{r}
+# Predict on training set
+rf_pred_train <- predict(spam_rf, type = "response")
+
+# Predict on testing set
+rf_pred_test <- predict(spam_rf, newdata = test_data, type = "response")
 
 ```
 
-### Evaluate on the Train Set
+### Training Accuracy
 
 ```{r}
+# Calculate training accuracy
+rf_train_accuracy <- mean(rf_pred_train == train_data$spam)
+cat("Random Forest Training Accuracy:", rf_train_accuracy, "\n")
 
 ```
 
-### Evaluate on the Test Set
+### Testing Accuracy
 
 ```{r}
+# Calculate testing accuracy
+rf_test_accuracy <- mean(rf_pred_test == test_data$spam)
+cat("Random Forest Test Accuracy:", rf_test_accuracy, "\n")
+
+```
+
+### Confusion Matrix
+
+```{r}
+# Confusion matrix for testing set
+conf_matrix <- confusionMatrix(rf_pred_test, test_data$spam)
+print(conf_matrix)
 
 ```
 
@@ -318,19 +367,144 @@ cat("Logistic Regression Test Accuracy:", log_test_accuracy, "\n")
 ### Logistic Regression
 
 ```{r}
+# Get probabilities for the positive class (e.g., "1")
+log_prob_test <- predict(spamLog, newdata = test_data, type = "response")
+
+# Ensure Test$spam is numeric
+test_data$spam <- as.numeric(as.character(test_data$spam))
+
+# Create prediction object
+spamLog.predictionTest <- prediction(as.numeric(log_prob_test), test_data$spam)
+
+# Calculate AUC
+spamLog.auc <- as.numeric(performance(spamLog.predictionTest, "auc")@y.values)
+cat("Logistic Regression Test AUC:", spamLog.auc, "\n")
+
+# Plot the ROC curve
+spamLog.perf <- performance(spamLog.predictionTest, "tpr", "fpr")
+plot(spamLog.perf, col = "darkgreen", main = "ROC Curve for Logistic Regression", lwd = 2)
+abline(a = 0, b = 1, lty = 2, col = "red")  # Add a diagonal line
+
+
+
 
 ```
 
 ### CART
 
 ```{r}
+# Get probabilities for the positive class (e.g., "1")
+cart_prob_test <- predict(spam_cart, newdata = test_data, type = "prob")[, 2]
+
+# Create prediction and performance objects
+cart_pred_obj <- prediction(cart_prob_test, test_data$spam)
+cart_perf <- performance(cart_pred_obj, "tpr", "fpr")
+
+# Plot the ROC curve
+plot(cart_perf, col = "blue", main = "ROC Curve for CART", lwd = 2)
+abline(a = 0, b = 1, lty = 2, col = "red")  # Add a diagonal line
+
+# Calculate AUC
+cart_auc <- as.numeric(performance(cart_pred_obj, "auc")@y.values)
+cat("CART Test AUC:", cart_auc, "\n")
 
 ```
 
 ### Random Forest
 
 ```{r}
+# Get probabilities for the positive class (e.g., "1")
+rf_prob_test <- predict(spam_rf, newdata = test_data, type = "prob")[, 2]
+
+# Create prediction and performance objects
+rf_pred_obj <- prediction(rf_prob_test, test_data$spam)
+rf_perf <- performance(rf_pred_obj, "tpr", "fpr")
+
+# Plot the ROC curve
+plot(rf_perf, col = "blue", main = "ROC Curve for Random Forest", lwd = 2)
+abline(a = 0, b = 1, lty = 2, col = "red")  # Add a diagonal line
+
+# Calculate AUC
+rf_auc <- as.numeric(performance(rf_pred_obj, "auc")@y.values)
+cat("Random Forest Test AUC:", rf_auc, "\n")
+```
+
+## Compare Model Performance - Accuracy
+
+```{r}
+# Logistic Regression Accuracy
+log_accuracy <- mean((log_prob_test >= 0.5) == test_data$spam)
+
+# CART Accuracy
+cart_accuracy <- mean((cart_prob_test >= 0.5) == test_data$spam)
+
+# Random Forest Accuracy
+rf_accuracy <- mean((rf_prob_test >= 0.5) == test_data$spam)
 
 ```
 
-## Compare Model Performance
+### Compare Model Performance - AUC
+
+```{r}
+# Logistic Regression AUC
+spamLog.auc  # From previous calculation
+
+# CART AUC
+cart_auc  # From previous calculation
+
+# Random Forest AUC
+rf_auc  # From previous calculation
+
+```
+
+### Summary Table
+
+```{r}
+results <- data.frame(
+  Model = c("Logistic Regression", "CART", "Random Forest"),
+  Accuracy = c(log_accuracy, cart_accuracy, rf_accuracy),
+  AUC = c(spamLog.auc, cart_auc, rf_auc)
+)
+print(results)
+
+```
+
+## Conclusion
+
+#### In this analysis, three models—Logistic Regression, CART, and Random Forest—were trained and evaluated to classify emails as spam or non-spam. The performance of each model was assessed using two key metrics: **Accuracy** and **AUC (Area Under the ROC Curve)**.
+
+------------------------------------------------------------------------
+
+#### **Model Performance Overview**
+
+1.  **Logistic Regression**:
+
+    -   Accuracy: **81.25%**
+
+    -   AUC: **0.848**
+
+    -   As a simple linear model, Logistic Regression performed reasonably well. Its ability to provide interpretable results makes it a viable choice for tasks where simplicity and interpretability are prioritized. However, its lower accuracy and AUC indicate it struggles with capturing complex relationships in the dataset.
+
+2.  **CART (Classification and Regression Trees)**:
+
+    -   Accuracy: **94.06%**
+
+    -   AUC: **0.967**
+
+    -   CART significantly outperformed Logistic Regression in both accuracy and AUC. Its interpretability—through decision trees—is a major strength, allowing easy understanding of the classification rules. However, decision trees are prone to overfitting, which can reduce generalization ability on unseen data.
+
+3.  **Random Forest**:
+
+    -   Accuracy: **98.78%**
+
+    -   AUC: **0.999**
+
+    -   Random Forest emerged as the best-performing model, achieving the highest accuracy and AUC. Its ensemble approach effectively handles complex relationships and reduces overfitting compared to a single decision tree. This makes it a robust choice for classification tasks requiring high predictive power.
+
+------------------------------------------------------------------------
+
+#### **Comparison and Final Recommendation**
+
+The **Random Forest** model demonstrated exceptional performance with an accuracy of **98.78%** and an AUC of **0.999**, surpassing both Logistic Regression and CART in all evaluated metrics. CART also performed well, particularly in terms of interpretability, while Logistic Regression offered a simpler alternative with moderate performance.
+
+Given the results, **Random Forest is recommended** for spam email classification due to its superior predictive power and ability to handle complex patterns in the dataset. While it is computationally more intensive, its accuracy and AUC justify its use for this task. For scenarios where interpretability is key, CART may serve as a strong secondary option. Logistic Regression, while the simplest, is not ideal for this dataset due to its comparatively lower performance.
