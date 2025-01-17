@@ -16,11 +16,15 @@ This project explores the classification of emails into spam and non-spam catego
 - Models were evaluated on both training and testing sets using metrics such as accuracy and AUC.
 
 ## Repository Structure
-├── README.md # Project overview and instructions 
-├── Spam_Email_Classification.Rmd # R Markdown file with the full analysis 
-├── Spam_Email_Classification.html # Knitted HTML output of the analysis 
-├── Spam_Email_Classification.pdf # Knitted PDF output of the analysis 
-├── emails.csv # Dataset for spam classifications
+```
+├── README.md                        # Project overview and instructions
+├── Spam_Email_Classification.Rmd    # R Markdown file with the full analysis
+├── Spam_Email_Classification.html   # Knitted HTML output of the analysis
+├── Spam_Email_Classification.pdf    # Knitted PDF output of the analysis
+├── emails.csv                       # Dataset for spam classification
+```
+
+
 
 ## Methods
 
